@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Two Lines to Your Past Self — make.fun entry.
+"""Two Lines to Your Past Self — entry writer (final, revised).
 
-Writes a two-line warning to /output/entry.txt: line 1 warns the
-past self about one specific moment (skipping the backup before a
-migration); line 2 traces what changed because of it.
-Gate: 1-280 chars, exactly two lines, one sentence each.
+Writes the exact two-line entry to /output/entry.txt, reads it back,
+and validates it before exiting:
+  * byte-identical output and expected sha256
+  * 1-280 character gate
+  * exactly two lines, no blank lines
+  * each line ends with a period
+  * the two lines differ (no accidental duplication)
 """
+
+import hashlib
+import sys
 
 ENTRY = (
     "Say no when they ask you to skip the backup before the migration.\n"
@@ -13,22 +19,51 @@ ENTRY = (
     "and the database you lost held four years of orders."
 )
 
+EXPECTED_SHA256 = "60b4dcb73f1a8d33595d0a97cc88522d718180ee1ac8dd331441c01097af2ed9"
+OUT_PATH = "/output/entry.txt"
+MIN_CHARS = 1
+MAX_CHARS = 280
 
-def main() -> None:
-    assert 1 <= len(ENTRY) <= 280, f"entry {len(ENTRY)} chars, gate is 1-280"
+
+def fail(msg: str) -> int:
+    print(f"FAIL: {msg}", file=sys.stderr)
+    return 1
+
+
+def main() -> int:
+    data = ENTRY.encode("utf-8")
+
+    # Gate: total length.
+    if not (MIN_CHARS <= len(ENTRY) <= MAX_CHARS):
+        return fail(f"entry is {len(ENTRY)} chars, outside 1-280")
+
+    # Gate: exactly two non-empty lines, no blank lines.
     lines = ENTRY.split("\n")
-    assert len(lines) == 2, f"expected exactly 2 lines, got {len(lines)}"
-    for line in lines:
-        assert line.strip(), "blank line"
-        assert line.rstrip().endswith("."), "each line must be one sentence"
-    with open("/output/entry.txt", "w", encoding="utf-8") as f:
-        f.write(ENTRY)
-    # Read-back verification: the file must hold exactly what we wrote.
-    with open("/output/entry.txt", encoding="utf-8") as f:
-        written = f.read()
-    assert written == ENTRY, "read-back mismatch"
-    print(f"wrote /output/entry.txt ({len(ENTRY)} chars)")
+    if len(lines) != 2:
+        return fail(f"expected exactly 2 lines, got {len(lines)}")
+    if any(not line.strip() for line in lines):
+        return fail("blank line found")
+
+    # Revised validation: each line is a complete sentence (ends with a
+    # period) and the two lines are distinct.
+    if any(not line.rstrip().endswith(".") for line in lines):
+        return fail("a line does not end with a period")
+    if lines[0].strip() == lines[1].strip():
+        return fail("the two lines are identical")
+
+    with open(OUT_PATH, "wb") as f:
+        f.write(data)
+    with open(OUT_PATH, "rb") as f:
+        back = f.read()
+    if back != data:
+        return fail("read-back mismatch")
+    digest = hashlib.sha256(back).hexdigest()
+    if digest != EXPECTED_SHA256:
+        return fail(f"sha256 mismatch: {digest}")
+
+    print(f"wrote {len(data)} chars to {OUT_PATH}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
